@@ -225,7 +225,7 @@ async function scanIconSidebar(
   }
 
   const submenuItemSel = sidebarConfig?.submenuItemSelector
-    || '.MuiListItem-root, .MuiListItemButton-root, [role="menuitem"], li[class*="menu"], li[class*="item"]';
+    || '[role="menuitem"], [role="link"], li a, li button, [class*="menu-item"], [class*="MenuItem"]';
   const submenuTitleSel = sidebarConfig?.submenuTitleSelector
     || 'h1, h2, h3, h4, h5, h6, [class*="title"], [class*="header"] span, [class*="header"] p';
 
@@ -323,14 +323,11 @@ async function autoDetectIconSelector(page: Page): Promise<string | null> {
     // 1. ListItemButton with only an icon (no text) inside a narrow sidebar
     // 2. IconButton elements grouped in a vertical strip
     const candidates = [
-      // MUI icon-only list items in a narrow container
-      '.MuiListItem-root .MuiListItemButton-root:has(.MuiListItemIcon-root)',
-      // Generic icon buttons in sidebar-like containers
-      '[class*="sidebar"] .MuiIconButton-root',
-      '[class*="sidebar"] .MuiListItemButton-root',
-      '[class*="Sidebar"] .MuiListItemButton-root',
-      // Narrow vertical strip with buttons
-      '.MuiDrawer-root .MuiListItemButton-root',
+      '[class*="sidebar"] button:has(svg)',
+      '[class*="Sidebar"] button:has(svg)',
+      'aside button:has(svg)',
+      'nav button:has(svg)',
+      '[role="navigation"] button:has(svg)',
     ];
 
     for (const sel of candidates) {
@@ -338,7 +335,7 @@ async function autoDetectIconSelector(page: Page): Promise<string | null> {
       // Need at least 3 icon buttons to consider it a sidebar
       if (items.length >= 3) {
         // Verify they're in a narrow container (icon sidebar is typically < 80px wide)
-        const parent = items[0].closest('[class*="sidebar"], [class*="Sidebar"], .MuiDrawer-root, .MuiBox-root');
+        const parent = items[0].closest('[class*="sidebar"], [class*="Sidebar"], aside, nav');
         if (parent) {
           const rect = parent.getBoundingClientRect();
           if (rect.width < 100) return sel;
@@ -360,11 +357,11 @@ async function scanStandardSidebar(
   // Find the navigation container
   const navSelector = await page.evaluate(() => {
     const candidates = [
-      '.MuiDrawer-root nav',
-      '.MuiDrawer-root',
       'nav',
       'aside',
       '[role="navigation"]',
+      '[class*="sidebar"]',
+      '[class*="Sidebar"]',
     ];
     for (const sel of candidates) {
       const el = document.querySelector(sel);
@@ -414,7 +411,7 @@ async function scanStandardSidebar(
         let level = 0;
         let parent = anchor.parentElement;
         while (parent && parent !== nav) {
-          if (parent.tagName === 'UL' || parent.tagName === 'OL' || parent.classList.contains('MuiList-root')) {
+          if (parent.tagName === 'UL' || parent.tagName === 'OL' || parent.getAttribute('role') === 'list' || parent.getAttribute('role') === 'group') {
             level++;
           }
           parent = parent.parentElement;
@@ -465,7 +462,7 @@ async function scanSidebar(
 
   // Also check if standard nav has enough links
   const standardLinkCount = await page.evaluate(() => {
-    const navCandidates = ['nav', '.MuiDrawer-root', 'aside', '[role="navigation"]'];
+    const navCandidates = ['nav', 'aside', '[role="navigation"]', '[class*="sidebar"]'];
     for (const sel of navCandidates) {
       const el = document.querySelector(sel);
       if (el && el.querySelectorAll('a[href]').length > 3) return el.querySelectorAll('a[href]').length;
