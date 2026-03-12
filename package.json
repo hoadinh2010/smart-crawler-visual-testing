@@ -1,7 +1,7 @@
 {
   "name": "smart-crawler-visual-testing",
-  "version": "1.0.0",
-  "description": "Claude Code skill for automated UI visual testing — crawls your app like a real user, screenshots every state, and AI-analyzes for layout bugs",
+  "version": "2.0.0",
+  "description": "Claude Code skill for automated UI visual testing — crawls any admin panel, screenshots every state, and AI-analyzes for layout bugs",
   "keywords": [
     "claude-code",
     "skill",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/whammytech/smart-crawler-visual-testing.git"
+    "url": "https://github.com/hoadinh2010/smart-crawler-visual-testing.git"
   },
   "dependencies": {
     "playwright": "^1.58.2"
