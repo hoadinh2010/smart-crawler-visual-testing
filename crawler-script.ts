@@ -720,7 +720,7 @@ async function scanPageElements(
     } else if (raw.role === 'tab') {
       type = 'tab';
       action = 'click';
-    } else if (raw.role === 'row' || raw.selector.includes('tr:first-child') || raw.selector.includes('DataGrid-row')) {
+    } else if (raw.role === 'row' || raw.selector.includes('tr:first-child')) {
       type = 'table-row';
       action = 'click';
     } else if (raw.role === 'combobox' || raw.tagName === 'select') {
@@ -1078,7 +1078,7 @@ async function interactWithElement(
 
       case 'table-row': {
         // Check for clickable link in first row first
-        const rowLink = page.locator('table tbody tr:first-child a[href], .MuiDataGrid-row:first-child a[href]').first();
+        const rowLink = page.locator('table tbody tr:first-child a[href]').first();
         const hasLink = await rowLink.isVisible().catch(() => false);
 
         if (hasLink) {
