@@ -1312,7 +1312,7 @@ async function runExecution(
 // --- Main ---
 
 interface CliInput {
-  mode: 'discover' | 'execute';
+  mode: 'discover' | 'execute' | 'login-detect' | 'nav-detect';
   config: CrawlerConfig;
   testPlan?: TestPlan; // Required for 'execute' mode
 }
@@ -1337,9 +1337,26 @@ async function main(): Promise<void> {
   const page: Page = await context.newPage();
 
   try {
-    await login(page, input.config, logger);
+    if (input.mode === 'login-detect') {
+      // Screenshot login page for Claude to analyze
+      const { baseUrl, auth } = input.config;
+      await page.goto(`${baseUrl}${auth.loginPath}`, { timeout: input.config.timeouts.navigation });
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      const screenshotPath = join(input.config.screenshotDir, 'login-page.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(JSON.stringify({ status: 'login-screenshot', screenshot: screenshotPath }));
 
-    if (input.mode === 'discover') {
+    } else if (input.mode === 'nav-detect') {
+      // Login then screenshot for Claude to analyze navigation
+      await login(page, input.config, logger);
+      const screenshotPath = join(input.config.screenshotDir, 'post-login-page.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(JSON.stringify({ status: 'nav-screenshot', screenshot: screenshotPath }));
+
+    } else if (input.mode === 'discover') {
+      await login(page, input.config, logger);
+
       // Phase 1: Discovery
       const menuItems = await scanSidebar(page, input.config.baseUrl, logger, input.config);
       const testPlan = await runDiscovery(page, input.config, menuItems, logger);
@@ -1347,6 +1364,8 @@ async function main(): Promise<void> {
       // Output test plan as JSON (for SKILL.md to parse)
       console.log(JSON.stringify(testPlan, null, 2));
     } else if (input.mode === 'execute') {
+      await login(page, input.config, logger);
+
       if (!input.testPlan) throw new Error('testPlan required for execute mode');
 
       // Phase 2: Execution
