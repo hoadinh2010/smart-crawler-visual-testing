@@ -2,3 +2,5 @@ node_modules/
 .DS_Store
 /tmp/
 *.log
+.claude/visual-test.config.json
+.visual-test-screenshots/

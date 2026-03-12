@@ -97,7 +97,7 @@ Create config file:
     "password": "..."
   },
   "viewport": { "width": 1920, "height": 1080 },
-  "screenshotDir": "/tmp/visual-test-screenshots",
+  "screenshotDir": ".visual-test-screenshots",
   "timeouts": {
     "navigation": 15000,
     "element": 5000,
@@ -111,15 +111,38 @@ Create config file:
 }
 ```
 
-Add `.claude/visual-test.config.json` to `.gitignore`.
+Add `.claude/visual-test.config.json` and `.visual-test-screenshots/` to `.gitignore`.
 
 **If config exists**, read it and proceed.
 
-### Step 1.5: AI Login Detection (first run only)
+### Step 1.5: Login Detection (first run only)
 
 If `auth.usernameSelector` is NOT set in config:
 
-1. Run crawler in login-detect mode:
+**Phase A: HTML analysis (fast, preferred)**
+
+1. Run crawler in `login-detect-html` mode:
+
+```bash
+cat > /tmp/visual-test-login-detect.json << 'ENDJSON'
+{ "mode": "login-detect-html", "config": { ... config ... } }
+ENDJSON
+npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-login-detect.json
+```
+
+2. Parse the output JSON — read the `html` field. Analyze the HTML to identify:
+   - The username/email input → determine its CSS selector from attributes (type, name, id, placeholder, aria-label)
+   - The password input → determine its CSS selector
+   - The submit button → determine its CSS selector
+   - **Tip:** Watch out for hidden inputs (`hidden`, `type="hidden"`) — skip those and target visible inputs. Use parent class scoping if needed (e.g., `.form-control input[type="email"]`).
+
+3. If you can confidently identify all 3 selectors from HTML, update config and proceed.
+
+**Phase B: Screenshot fallback (only if HTML is ambiguous)**
+
+If the HTML does not clearly reveal the form structure (e.g., custom web components, shadow DOM, heavily dynamic rendering):
+
+1. Run crawler in `login-detect` mode:
 
 ```bash
 cat > /tmp/visual-test-login-detect.json << 'ENDJSON'
@@ -128,14 +151,9 @@ ENDJSON
 npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-login-detect.json
 ```
 
-2. Parse the output JSON — read the `screenshot` path.
+2. Read the screenshot and visually identify the form elements.
 
-3. Read the screenshot file. Look at it carefully and identify:
-   - The username/email input field → determine its CSS selector
-   - The password input field → determine its CSS selector
-   - The submit/login button → determine its CSS selector
-
-4. Update config with the detected selectors:
+**Update config:**
 
 ```json
 "auth": {
@@ -146,9 +164,9 @@ npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-login-d
 }
 ```
 
-5. Write the updated config to `.claude/visual-test.config.json`.
+Write the updated config to `.claude/visual-test.config.json`.
 
-6. If you cannot identify the login form from the screenshot, ask the user.
+If you cannot identify the login form from either HTML or screenshot, ask the user.
 
 ### Step 2: Run Discovery (Phase 1)
 
@@ -167,7 +185,11 @@ npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-discove
 
 The script outputs a `TestPlan` JSON to stdout. Parse it.
 
-**If discovery returns 0 menu items:**
+**If discovery returns 0 or very few menu items:**
+
+This often means the app has an intermediate page (master menu, tenant selector, card grid) before the actual admin panel with sidebar navigation. Common pattern: login → master menu (card grid) → click any card → admin panel with sidebar.
+
+**Strategy: Navigate past the intermediate page first.**
 
 1. Run crawler in nav-detect mode:
 
@@ -178,21 +200,39 @@ ENDJSON
 npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-nav-detect.json
 ```
 
-2. Read the screenshot. Identify the navigation type and structure:
-   - Is it a sidebar (left/right), top navbar, hamburger menu, or tabs?
-   - What menu items are visible?
-   - For hamburger menus: what selector opens it?
+2. Read the screenshot. Identify what you see:
 
-3. If it's a non-standard sidebar (icon-only), add `sidebar` config:
+   **Case A — Master menu / card grid / tenant selector:**
+   The page shows clickable cards, icons, or links that each lead to a different section of the app. The actual sidebar navigation only appears AFTER clicking one of these cards.
 
-```json
-"sidebar": {
-  "iconSelector": "<selector>",
-  "submenuItemSelector": "<selector>"
-}
-```
+   → Add `postLoginPath` to config: pick the URL path that any card navigates to (e.g., `/admin`). The crawler will navigate there after login, which should reveal the sidebar.
 
-4. Update config and re-run discovery.
+   → If the master menu cards lead to different admin sections with different sidebars, add `masterMenu` config:
+   ```json
+   "masterMenu": {
+     "cardSelector": "<selector for clickable cards/links on master menu>",
+     "basePathAfterClick": "/admin"
+   }
+   ```
+   → Re-run discovery. The crawler will now navigate past the master menu.
+
+   **Case B — Sidebar exists but not detected:**
+   The page has a sidebar (left/right), top navbar, hamburger menu, or tabs, but the generic heuristics didn't find it.
+
+   → If it's a non-standard sidebar (icon-only, MUI Drawer, etc.), add `sidebar` config:
+   ```json
+   "sidebar": {
+     "iconSelector": "<selector>",
+     "submenuItemSelector": "<selector>"
+   }
+   ```
+
+   **Case C — No navigation visible:**
+   → Ask the user for guidance on how to navigate the app.
+
+3. Update config and re-run discovery.
+
+**If discovery returns pages but the count seems too low** (e.g., only 10 pages when you expect 30+), it may mean the sidebar only shows items for one section. Check if the app has a master menu that groups sections. If so, the crawler needs to visit each master menu section separately — add `masterMenu.cardSelector` so the crawler iterates all sections.
 
 ### Step 3: Show Test Plan & Get Approval
 

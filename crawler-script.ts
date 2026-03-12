@@ -38,6 +38,11 @@ interface CrawlerConfig {
     submenuItemSelector?: string;    // Selector for individual submenu items
     submenuTitleSelector?: string;   // Selector for the submenu category title
   };
+  // Optional master menu config for apps with intermediate page (card grid) before admin panel
+  masterMenu?: {
+    cardSelector: string;           // CSS selector for clickable cards/links on master menu
+    basePathAfterClick?: string;    // Base path the cards navigate to (e.g., "/admin")
+  };
 }
 
 interface MenuItem {
@@ -1312,7 +1317,7 @@ async function runExecution(
 // --- Main ---
 
 interface CliInput {
-  mode: 'discover' | 'execute' | 'login-detect' | 'nav-detect';
+  mode: 'discover' | 'execute' | 'login-detect' | 'nav-detect' | 'login-detect-html';
   config: CrawlerConfig;
   testPlan?: TestPlan; // Required for 'execute' mode
 }
@@ -1337,8 +1342,26 @@ async function main(): Promise<void> {
   const page: Page = await context.newPage();
 
   try {
-    if (input.mode === 'login-detect') {
-      // Screenshot login page for Claude to analyze
+    if (input.mode === 'login-detect-html') {
+      // Return HTML of login page for Claude to analyze inputs directly
+      const { baseUrl, auth } = input.config;
+      await page.goto(`${baseUrl}${auth.loginPath}`, { timeout: input.config.timeouts.navigation });
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(2000);
+      // Extract form-related HTML: all inputs, buttons, labels, forms
+      const formHtml = await page.evaluate(() => {
+        const forms = document.querySelectorAll('form');
+        if (forms.length > 0) {
+          return Array.from(forms).map(f => f.outerHTML).join('\n');
+        }
+        // No form tag — get all inputs and buttons on the page
+        const inputs = document.querySelectorAll('input, button, [role="button"]');
+        return Array.from(inputs).map(el => el.outerHTML).join('\n');
+      });
+      console.log(JSON.stringify({ status: 'login-html', html: formHtml }));
+
+    } else if (input.mode === 'login-detect') {
+      // Screenshot login page for Claude to analyze (fallback when HTML analysis insufficient)
       const { baseUrl, auth } = input.config;
       await page.goto(`${baseUrl}${auth.loginPath}`, { timeout: input.config.timeouts.navigation });
       await page.waitForLoadState('domcontentloaded');
@@ -1357,8 +1380,56 @@ async function main(): Promise<void> {
     } else if (input.mode === 'discover') {
       await login(page, input.config, logger);
 
+      let menuItems: MenuItem[];
+
+      if (input.config.masterMenu) {
+        // Master menu mode: iterate each card, click it, scan sidebar for that section
+        menuItems = [];
+        const { cardSelector } = input.config.masterMenu;
+        const masterMenuUrl = page.url();
+
+        // Get all card URLs/labels from the master menu page
+        const cards = await page.locator(cardSelector).all();
+        logger.log('info', 'discovery', { menuPath: 'Master Menu', element: `Found ${cards.length} menu cards` });
+
+        for (let i = 0; i < cards.length; i++) {
+          try {
+            // Re-navigate to master menu (cards may have changed DOM after navigation)
+            await page.goto(masterMenuUrl, { timeout: input.config.timeouts.navigation });
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForTimeout(1000);
+
+            const card = page.locator(cardSelector).nth(i);
+            const cardText = (await card.textContent())?.trim() || `Card ${i}`;
+            logger.log('info', 'click', { menuPath: 'Master Menu', element: cardText, type: 'master-menu-card' });
+
+            await card.click();
+            await page.waitForLoadState('domcontentloaded');
+            await page.waitForTimeout(2000);
+
+            // Scan sidebar at this section
+            const sectionItems = await scanSidebar(page, input.config.baseUrl, logger, input.config);
+            logger.log('info', 'discovery', { menuPath: cardText, element: `Found ${sectionItems.length} menu items in section` });
+            menuItems.push(...sectionItems);
+          } catch (err: any) {
+            logger.log('warn', 'failed', { menuPath: `Master Menu card ${i}`, error: err.message });
+          }
+        }
+
+        // Deduplicate by URL
+        const seen = new Set<string>();
+        menuItems = menuItems.filter(item => {
+          if (!item.url || seen.has(item.url)) return false;
+          seen.add(item.url);
+          return true;
+        });
+        logger.log('info', 'discovery', { menuPath: 'Master Menu', element: `Total unique menu items: ${menuItems.length}` });
+      } else {
+        // Standard mode: scan sidebar directly
+        menuItems = await scanSidebar(page, input.config.baseUrl, logger, input.config);
+      }
+
       // Phase 1: Discovery
-      const menuItems = await scanSidebar(page, input.config.baseUrl, logger, input.config);
       const testPlan = await runDiscovery(page, input.config, menuItems, logger);
 
       // Output test plan as JSON (for SKILL.md to parse)
