@@ -4,8 +4,8 @@
 
 Visual Testing là một Claude Code skill tự động crawl UI và phân tích bằng AI vision. Skill hoạt động như một user thật:
 
-1. **Login** vào app
-2. **Quét sidebar menu** — tự phát hiện tất cả menu items (DFS)
+1. **Login** vào app — Claude tự phát hiện login form ở lần đầu chạy
+2. **Quét navigation** — tự phát hiện tất cả menu items (DFS)
 3. **Click mọi interactive element** trên từng trang (buttons, tabs, dropdowns, table rows...)
 4. **Chụp screenshot** mỗi trạng thái (page load, modal open, tab switch, detail page...)
 5. **Phân tích** từng screenshot bằng AI vision
@@ -13,13 +13,22 @@ Visual Testing là một Claude Code skill tự động crawl UI và phân tích
 
 **Zero config.** Chỉ cần `baseUrl` và login credentials.
 
+**Hỗ trợ mọi UI framework:** MUI, Ant Design, Chakra UI, Tailwind CSS, Bootstrap, và custom CSS.
+
+### Các kiểu navigation được hỗ trợ
+
+- **Sidebar trái/phải** — sidebar dọc tiêu chuẩn, bao gồm icon-only sidebar
+- **Top navbar** — thanh điều hướng ngang ở trên cùng
+- **Hamburger menu** — menu ẩn/hiện trên mobile/responsive
+- **Tabs** — điều hướng dạng tab ngang hoặc dọc
+
 ### Phát hiện được gì?
 
 - Component bị chồng chéo (overlapping), z-index sai
 - Layout bị vỡ, grid bị lệch, column overlap
 - Text bị cắt, font không nhất quán, hiển thị "undefined"/"null"/"NaN"
 - Spacing (padding/margin) bất thường, element mồ côi (orphaned)
-- MUI form controls bị lệch chiều cao, label notch rendering sai
+- Form controls bị lệch chiều cao, label rendering sai
 - Content bị overflow ra ngoài container
 - Badge/tag màu sắc sai ngữ nghĩa (vd: "Active" badge màu đỏ)
 - Raw technical content lộ ra cho user (stack trace, ARN, error code)
@@ -75,10 +84,10 @@ pass: Admin12345!
 viewport mặc định
 ```
 
-Claude tạo config rồi **tự crawl sidebar menu**:
+Claude tạo config rồi **tự phát hiện navigation và crawl**:
 
 ```
-Crawling sidebar menu...
+Crawling navigation menu...
 
 | # | Menu Path              | URL                          | Elements | Actions |
 |---|------------------------|------------------------------|----------|---------|
@@ -125,12 +134,15 @@ Lần sau:
 
 ### Phase 1: Discovery
 
-Crawler login → quét sidebar menu → navigate tới từng page → scan interactive elements.
+Crawler login → quét navigation → navigate tới từng page → scan interactive elements.
 
-**Sidebar detection** tự động:
-- **Standard links**: Tìm `<a>` tags trong `<nav>` sidebar
+**Navigation detection** tự động (hỗ trợ mọi kiểu):
+- **Sidebar trái/phải**: Tìm `<a>` tags trong `<nav>` sidebar
 - **Icon sidebar**: Phát hiện narrow container (<100px) với icon buttons → click → đọc submenu items
-- **Custom config**: Override selectors qua config nếu app có sidebar đặc biệt
+- **Top navbar**: Phát hiện horizontal nav ở trên cùng viewport
+- **Hamburger menu**: Phát hiện toggle button → click mở → đọc menu items
+- **Tabs**: Phát hiện tab container → click từng tab → navigate
+- **Custom config**: Override selectors qua config nếu app có navigation đặc biệt
 
 **Element classification** — crawler phân loại từng element:
 | Type | Ví dụ | Hành động |
@@ -152,13 +164,14 @@ Crawler navigate từng page → click từng element theo test plan → screens
 
 ## Config nâng cao
 
-### Sidebar selectors
+### Navigation selectors
 
-Nếu app có sidebar đặc biệt, override selectors:
+Nếu app có navigation đặc biệt, override selectors:
 
 ```json
 {
-  "sidebar": {
+  "navigation": {
+    "type": "sidebar",
     "iconSelector": ".sidebar-icon",
     "submenuContainerSelector": ".submenu-panel",
     "submenuItemSelector": ".submenu-link",
@@ -276,7 +289,7 @@ Report cuối cùng:
 | `0 menu items found` | Thêm `postLoginPath` vào config |
 | `__name is not defined` | Bug đã fix trong crawler-script.ts |
 | `Playwright not found` | `npm install -g playwright && npx playwright install chromium` |
-| Sidebar không detect được | Thêm `sidebar` selectors vào config |
+| Navigation không detect được | Thêm `navigation` selectors vào config |
 | Crawler stuck | Check `crawler.log` trong screenshotDir |
 | Quá nhiều pages | Giảm `limits.maxPages` trong config |
 
@@ -286,4 +299,4 @@ Report cuối cùng:
 2. **Sau khi sửa UI:** Chạy lại để verify fix
 3. **Trước release:** Chạy trên staging
 4. **Chia sẻ cho team:** Skill nằm trong `~/.claude/skills/visual-testing/` — mỗi người tạo config riêng
-5. **Custom sidebar:** Nếu auto-detect không hoạt động, thêm selectors vào config
+5. **Custom navigation:** Nếu auto-detect không hoạt động, thêm `navigation` selectors vào config
