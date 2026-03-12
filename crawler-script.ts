@@ -14,6 +14,10 @@ interface CrawlerConfig {
     postLoginPath?: string;
     // URL pattern that indicates successful login (glob). Default: '**/admin**'
     successUrlPattern?: string;
+    // Selectors detected by AI (SKILL.md fills these in config after first run)
+    usernameSelector?: string;
+    passwordSelector?: string;
+    submitSelector?: string;
   };
   viewport: { width: number; height: number };
   screenshotDir: string;
@@ -163,34 +167,34 @@ async function login(
   logger.log('info', 'login', { menuPath: 'Login', url: `${baseUrl}${auth.loginPath}` });
 
   await page.goto(`${baseUrl}${auth.loginPath}`);
-  await page.waitForSelector('.MuiOutlinedInput-root input', { timeout: timeouts.navigation });
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(2000);
 
-  const inputs = page.locator('.MuiOutlinedInput-root input');
-  await inputs.first().fill(auth.username);
-  await inputs.nth(1).fill(auth.password);
-  await page.click('button[type="submit"]');
+  // Use selectors from config (provided by SKILL.md after AI detection)
+  const userSel = auth.usernameSelector || 'input[type="email"], input[type="text"]';
+  const passSel = auth.passwordSelector || 'input[type="password"]';
+  const submitSel = auth.submitSelector || 'button[type="submit"]';
 
-  const result = await Promise.race([
-    page.waitForURL('**/master-menu**', { timeout: timeouts.navigation }).then(() => 'success' as const),
-    page.waitForURL('**/admin**', { timeout: timeouts.navigation }).then(() => 'success' as const),
-    page.waitForURL('**/forceChangePassword**', { timeout: timeouts.navigation }).then(() => 'forceChangePassword' as const),
-    page.waitForSelector('.MuiAlert-root', { timeout: timeouts.navigation }).then(() => 'authError' as const),
-  ]);
+  await page.locator(userSel).first().fill(auth.username);
+  await page.locator(passSel).first().fill(auth.password);
+  await page.locator(submitSel).first().click();
 
-  if (result === 'authError') throw new Error('Login failed. Check credentials.');
-  if (result === 'forceChangePassword') throw new Error('Test user requires password change.');
+  const successPattern = auth.successUrlPattern || '**/admin**';
+  await page.waitForURL(successPattern, { timeout: timeouts.navigation }).catch(() => {
+    if (page.url().includes(auth.loginPath)) {
+      throw new Error('Login failed. Check credentials.');
+    }
+  });
 
-  // If postLoginPath is configured, navigate there (e.g. to get past a tenant selector page)
   if (auth.postLoginPath) {
     logger.log('info', 'login', { menuPath: 'Login', element: `Navigating to ${auth.postLoginPath}...` });
     await page.goto(`${baseUrl}${auth.postLoginPath}`, {
-      waitUntil: 'domcontentloaded',
-      timeout: timeouts.navigation,
+      waitUntil: 'domcontentloaded', timeout: timeouts.navigation,
     });
     await page.waitForTimeout(2000);
   }
 
-  logger.log('info', 'login', { menuPath: 'Login', duration: 0, element: 'Login successful' });
+  logger.log('info', 'login', { menuPath: 'Login', element: 'Login successful' });
 }
 
 // --- Sidebar Scanner ---
