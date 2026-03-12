@@ -109,6 +109,8 @@ type LogAction =
   | 'close' | 'back' | 'timeout' | 'retry' | 'failed'
   | 'skip' | 'login' | 'discovery' | 'limit';
 
+const MODAL_SELECTOR = '[role="dialog"], [role="alertdialog"], [aria-modal="true"], [class*="modal" i], [class*="drawer" i], [class*="dialog" i]';
+
 // --- Logger ---
 
 class CrawlerLogger {
@@ -770,28 +772,14 @@ async function scanPageElements(
 
 // --- Page Ready Detection ---
 
-async function waitForPageReady(
-  page: Page,
-  timeout: number
-): Promise<void> {
-  const contentSelectors = [
-    '.MuiContainer-root',
-    '[role="main"]',
-    'main',
-    '.MuiBox-root',
-  ];
+async function waitForPageReady(page: Page, timeout: number): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout }).catch(() => {});
 
-  const selectorFound = await Promise.any(
-    contentSelectors.map((sel) =>
-      page.waitForSelector(sel, { state: 'visible', timeout }).then(() => true)
-    )
+  const contentSelectors = ['main', '[role="main"]', '#app > *', '#root > *', '.content'];
+  await Promise.any(
+    contentSelectors.map(sel => page.waitForSelector(sel, { state: 'visible', timeout: 3000 }).then(() => true))
   ).catch(() => false);
 
-  if (!selectorFound) {
-    await page.waitForTimeout(2000);
-  }
-
-  // Stability delay — let SPA transitions settle
   await page.waitForTimeout(500);
 }
 
@@ -1000,14 +988,16 @@ async function closeModalOrDrawer(
 
   // Try close buttons
   const closeSelectors = [
-    '[aria-label="close"]',
-    '[aria-label="Close"]',
-    '.MuiDialog-root button:has(.MuiSvgIcon-root):first-child',
-    '.MuiModal-root button:has(.MuiSvgIcon-root)',
-    'button:text("Cancel")',
-    'button:text("Hủy")',
-    'button:text("Đóng")',
-    'button:text("Close")',
+    '[aria-label*="close" i]',
+    '[aria-label*="đóng" i]',
+    'button:has-text("×")',
+    'button:has-text("Close")',
+    'button:has-text("Đóng")',
+    'button:has-text("Cancel")',
+    'button:has-text("Hủy")',
+    '.close',
+    '.modal-close',
+    '[data-dismiss="modal"]',
   ];
 
   for (const sel of closeSelectors) {
@@ -1019,7 +1009,7 @@ async function closeModalOrDrawer(
         await page.waitForTimeout(500);
 
         // Verify closed
-        const stillOpen = await page.locator('.MuiModal-root, .MuiDialog-root, .MuiDrawer-root .MuiDrawer-paper').first().isVisible().catch(() => false);
+        const stillOpen = await page.locator(MODAL_SELECTOR).first().isVisible().catch(() => false);
         if (!stillOpen) return;
       }
     } catch {
@@ -1030,7 +1020,7 @@ async function closeModalOrDrawer(
   // Try Escape key
   await page.keyboard.press('Escape');
   await page.waitForTimeout(500);
-  const stillOpen = await page.locator('.MuiModal-root, .MuiDialog-root').first().isVisible().catch(() => false);
+  const stillOpen = await page.locator(MODAL_SELECTOR).first().isVisible().catch(() => false);
   if (!stillOpen) {
     logger.log('info', 'close', { menuPath, element: 'Closed via Escape' });
     return;
@@ -1146,7 +1136,7 @@ async function interactWithElement(
 
         // Check if a modal/drawer opened
         const modalVisible = await page
-          .locator('.MuiModal-root, .MuiDialog-root, .MuiDrawer-root .MuiDrawer-paper, [role="dialog"]')
+          .locator(MODAL_SELECTOR)
           .first()
           .isVisible()
           .catch(() => false);
