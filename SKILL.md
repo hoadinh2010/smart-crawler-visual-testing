@@ -1,15 +1,15 @@
 ---
 name: visual-testing
-description: Use when you need to visually verify UI quality across frontend routes — captures screenshots with Playwright and analyzes them for layout bugs, overlapping components, spacing issues, and UX problems
+description: Use when you need to visually verify UI quality across frontend routes — captures screenshots with Playwright and analyzes them for layout bugs, overlapping components, spacing issues, and UX problems. Works with any frontend framework; AI detects login forms and navigation structure automatically.
 ---
 
 # Visual Testing — Smart Crawler
 
 ## Overview
 
-Automated UI testing that behaves like a real user: login → navigate sidebar menu via DFS → click every interactive element → screenshot each state → analyze for bugs → report.
+Automated UI testing that behaves like a real user: login → navigate menu via DFS → click every interactive element → screenshot each state → analyze for bugs → report.
 
-**Zero config.** Only needs `baseUrl` and login credentials.
+**Zero config.** Only needs `baseUrl` and login credentials. Works with any frontend framework — React, Vue, Angular, Laravel, etc. AI automatically detects login form selectors and navigation structure when heuristics fail.
 
 ## When to Use
 
@@ -31,7 +31,12 @@ digraph smart_crawler {
   "Check config" [shape=box];
   "Config exists?" [shape=diamond];
   "Interactive setup" [shape=box];
+  "Login selectors set?" [shape=diamond];
+  "AI Login Detection" [shape=box];
   "Run Discovery (Phase 1)" [shape=box];
+  "Menu items found?" [shape=diamond];
+  "AI Nav Detection" [shape=box];
+  "Re-run Discovery" [shape=box];
   "Show test plan" [shape=box];
   "User approves?" [shape=diamond];
   "Run Execution (Phase 2)" [shape=box];
@@ -41,9 +46,16 @@ digraph smart_crawler {
 
   "Check config" -> "Config exists?";
   "Config exists?" -> "Interactive setup" [label="no"];
-  "Config exists?" -> "Run Discovery (Phase 1)" [label="yes"];
-  "Interactive setup" -> "Run Discovery (Phase 1)";
-  "Run Discovery (Phase 1)" -> "Show test plan";
+  "Config exists?" -> "Login selectors set?" [label="yes"];
+  "Interactive setup" -> "Login selectors set?";
+  "Login selectors set?" -> "AI Login Detection" [label="no"];
+  "Login selectors set?" -> "Run Discovery (Phase 1)" [label="yes"];
+  "AI Login Detection" -> "Run Discovery (Phase 1)";
+  "Run Discovery (Phase 1)" -> "Menu items found?";
+  "Menu items found?" -> "AI Nav Detection" [label="no"];
+  "Menu items found?" -> "Show test plan" [label="yes"];
+  "AI Nav Detection" -> "Re-run Discovery";
+  "Re-run Discovery" -> "Show test plan";
   "Show test plan" -> "User approves?";
   "User approves?" -> "Run Execution (Phase 2)" [label="yes"];
   "User approves?" -> "Ask about screenshots" [label="no, stop"];
@@ -103,6 +115,41 @@ Add `.claude/visual-test.config.json` to `.gitignore`.
 
 **If config exists**, read it and proceed.
 
+### Step 1.5: AI Login Detection (first run only)
+
+If `auth.usernameSelector` is NOT set in config:
+
+1. Run crawler in login-detect mode:
+
+```bash
+cat > /tmp/visual-test-login-detect.json << 'ENDJSON'
+{ "mode": "login-detect", "config": { ... config ... } }
+ENDJSON
+npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-login-detect.json
+```
+
+2. Parse the output JSON — read the `screenshot` path.
+
+3. Read the screenshot file. Look at it carefully and identify:
+   - The username/email input field → determine its CSS selector
+   - The password input field → determine its CSS selector
+   - The submit/login button → determine its CSS selector
+
+4. Update config with the detected selectors:
+
+```json
+"auth": {
+  "...existing fields...": "...",
+  "usernameSelector": "<selector you identified>",
+  "passwordSelector": "<selector you identified>",
+  "submitSelector": "<selector you identified>"
+}
+```
+
+5. Write the updated config to `.claude/visual-test.config.json`.
+
+6. If you cannot identify the login form from the screenshot, ask the user.
+
 ### Step 2: Run Discovery (Phase 1)
 
 Write a JSON input file and run the crawler in discovery mode:
@@ -119,6 +166,33 @@ npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-discove
 ```
 
 The script outputs a `TestPlan` JSON to stdout. Parse it.
+
+**If discovery returns 0 menu items:**
+
+1. Run crawler in nav-detect mode:
+
+```bash
+cat > /tmp/visual-test-nav-detect.json << 'ENDJSON'
+{ "mode": "nav-detect", "config": { ... config ... } }
+ENDJSON
+npx tsx .claude/skills/visual-testing/crawler-script.ts /tmp/visual-test-nav-detect.json
+```
+
+2. Read the screenshot. Identify the navigation type and structure:
+   - Is it a sidebar (left/right), top navbar, hamburger menu, or tabs?
+   - What menu items are visible?
+   - For hamburger menus: what selector opens it?
+
+3. If it's a non-standard sidebar (icon-only), add `sidebar` config:
+
+```json
+"sidebar": {
+  "iconSelector": "<selector>",
+  "submenuItemSelector": "<selector>"
+}
+```
+
+4. Update config and re-run discovery.
 
 ### Step 3: Show Test Plan & Get Approval
 
