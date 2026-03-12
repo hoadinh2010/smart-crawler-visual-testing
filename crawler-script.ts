@@ -534,7 +534,7 @@ async function scanPageElements(
       // which breaks inside page.evaluate()
       var isInNav = function(el: Element): boolean {
         // Check the element itself first
-        if (el.closest && el.closest('nav, [role="navigation"], .MuiDrawer-root, .MuiDrawer-paper, aside')) {
+        if (el.closest && el.closest('nav, [role="navigation"], aside, [class*="sidebar"], [class*="Sidebar"]')) {
           return true;
         }
         // Also check if the element is a sidebar icon button (small fixed container on the left)
@@ -546,9 +546,7 @@ async function scanPageElements(
           if (
             parent.tagName === 'NAV' ||
             parent.tagName === 'ASIDE' ||
-            parent.getAttribute('role') === 'navigation' ||
-            parent.classList.contains('MuiDrawer-root') ||
-            parent.classList.contains('MuiDrawer-paper')
+            parent.getAttribute('role') === 'navigation'
           ) return true;
           parent = parent.parentElement;
         }
@@ -603,8 +601,11 @@ async function scanPageElements(
         return path;
       };
 
+      var contentArea = document.querySelector('main, [role="main"], #content, .content, .main-content')
+        || document.body;
+
       // Collect buttons
-      document.querySelectorAll('button, [role="button"]').forEach((el) => {
+      contentArea.querySelectorAll('button, [role="button"]').forEach((el) => {
         if (isInNav(el)) return;
         if (!(el as HTMLElement).offsetParent) return; // Not visible
         const rect = el.getBoundingClientRect();
@@ -623,7 +624,7 @@ async function scanPageElements(
       });
 
       // Collect tabs
-      document.querySelectorAll('[role="tab"], .MuiTab-root').forEach((el) => {
+      contentArea.querySelectorAll('[role="tab"]').forEach((el) => {
         if (isInNav(el)) return;
         if (!(el as HTMLElement).offsetParent) return;
         results.push({
@@ -639,14 +640,10 @@ async function scanPageElements(
       });
 
       // Collect first table row (clickable)
-      const firstRow =
-        document.querySelector('table tbody tr:first-child') ||
-        document.querySelector('.MuiDataGrid-row:first-child');
+      var firstRow = contentArea.querySelector('table tbody tr:first-child');
       if (firstRow && (firstRow as HTMLElement).offsetParent) {
         results.push({
-          selector: firstRow.matches('.MuiDataGrid-row')
-            ? '.MuiDataGrid-row:first-child'
-            : 'table tbody tr:first-child',
+          selector: 'table tbody tr:first-child',
           label: 'row[0]',
           tagName: 'tr',
           href: null,
@@ -658,7 +655,7 @@ async function scanPageElements(
       }
 
       // Collect dropdowns
-      document.querySelectorAll('select, .MuiSelect-root, [role="combobox"]').forEach((el) => {
+      contentArea.querySelectorAll('select, [role="combobox"], [role="listbox"], [aria-haspopup="listbox"]').forEach((el) => {
         if (isInNav(el)) return;
         if (!(el as HTMLElement).offsetParent) return;
         results.push({
@@ -674,7 +671,7 @@ async function scanPageElements(
       });
 
       // Collect internal links (not in nav)
-      document.querySelectorAll('main a[href], .MuiContainer-root a[href], [role="main"] a[href]').forEach((el) => {
+      contentArea.querySelectorAll('a[href]').forEach((el) => {
         if (isInNav(el)) return;
         if (!(el as HTMLElement).offsetParent) return;
         const href = (el as HTMLAnchorElement).href;
@@ -718,7 +715,7 @@ async function scanPageElements(
     if (raw.type === 'submit' || /\b(submit|save|lưu|xác nhận|gửi)\b/i.test(text)) {
       type = 'action-submit';
       action = 'skip';
-    } else if (/\b(delete|remove|xóa|hủy bỏ)\b/i.test(text) || classStr.includes('containederror') || classStr.includes('color-error')) {
+    } else if (/\b(delete|remove|xóa|hủy bỏ)\b/i.test(text) || classStr.includes('danger') || classStr.includes('destructive') || classStr.includes('delete')) {
       type = 'action-danger';
       action = 'click+cancel';
     } else if (raw.role === 'tab') {
@@ -727,7 +724,7 @@ async function scanPageElements(
     } else if (raw.role === 'row' || raw.selector.includes('tr:first-child') || raw.selector.includes('DataGrid-row')) {
       type = 'table-row';
       action = 'click';
-    } else if (raw.role === 'combobox' || raw.tagName === 'select' || classStr.includes('muiselect')) {
+    } else if (raw.role === 'combobox' || raw.tagName === 'select') {
       type = 'dropdown';
       action = 'click+close';
     } else if (raw.href) {
