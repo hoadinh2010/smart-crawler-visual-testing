@@ -55,7 +55,7 @@ If this screenshot was captured AFTER clicking an element (not a page load), app
 - Is the modal width proportional to its content? (not too narrow, not full-width for a small form)
 
 **Form inside modal:**
-- Are all fields visible? Labels rendered correctly (MUI outlined label notch)?
+- Are all fields visible? Labels rendered correctly (floating label notch)?
 - Consistent field heights across all inputs/selects?
 - Proper spacing between fields — not cramped, not too spread out?
 - Are required field markers (*) present?
@@ -127,8 +127,8 @@ If this screenshot was captured AFTER clicking an element (not a page load), app
 - If one Select is 40px tall and another is 36px, flag it
 - If a search input is taller/shorter than adjacent filter dropdowns, flag it
 
-**MUI Outlined label rendering:**
-- MUI Outlined TextFields/Selects have a floating label that sits on the top border
+**Floating label rendering:**
+- Some UI frameworks (MUI, Ant Design, Bootstrap) use floating labels that sit on the top border of input fields
 - The label should create a clean "notch" in the border — the border should break cleanly around the text
 - BUGS to catch:
   - Label text is crooked or tilted
@@ -233,7 +233,7 @@ If this screenshot was captured AFTER clicking an element (not a page load), app
 - Missing loading indicators
 - Navigation state mismatch
 - Orphaned elements (unclear containment)
-- MUI label rendering issues
+- Floating label rendering issues
 - Badge color semantics wrong
 
 **INFO — Nice to fix, polish:**
